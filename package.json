@@ -22,7 +22,7 @@
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio",
     "prisma:migrate:deploy": "prisma migrate deploy",
-    "start:render": "npx prisma migrate deploy && node dist/main.js"
+    "start:render": "npx prisma migrate deploy && node dist/src/main.js"
   },
   "dependencies": {
     "@clerk/backend": "^3.2.0",
