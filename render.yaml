@@ -4,8 +4,7 @@ services:
     runtime: node
     plan: free
     buildCommand: npm install && npm run prisma:generate && npm run build
-    startCommand: npm run start:prod
-    preDeployCommand: npm run prisma:migrate:deploy
+    startCommand: npm run start:render
     envVars:
       - key: NODE_ENV
         value: production
