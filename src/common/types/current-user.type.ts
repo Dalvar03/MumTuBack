@@ -1,7 +1,7 @@
 import { UserRole, UserStatus } from '@prisma/client';
 
 export interface CurrentUser {
-  id: number;
+  id: string;
   clerkUserId: string;
   email: string;
   role: UserRole | null;

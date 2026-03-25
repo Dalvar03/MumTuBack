@@ -9,7 +9,6 @@ datasource db {
 enum UserRole {
   CLIENT
   WORKER
-  ADMIN
 }
 
 enum UserStatus {
@@ -18,12 +17,51 @@ enum UserStatus {
 }
 
 model User {
-  id          Int        @id @default(autoincrement())
-  clerkUserId String     @unique
-  email       String     @unique
-  role        UserRole?
-  status      UserStatus @default(ACTIVE)
+  id               String    @id @default(cuid())
+  clerkUserId      String    @unique
+  email            String    @unique
+  status           UserStatus @default(ACTIVE)
+  role             UserRole?
+  username         String?
+  city             String?
+  workRadiusKm     Int?
+  onboardingDone   Boolean   @default(false)
 
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  createdJobs      Job[]     @relation("ClientJobs")
+  assignedJobs     Job[]     @relation("AssignedWorkerJobs")
+}
+
+enum JobStatus {
+  OPEN
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model Job {
+  id               String     @id @default(cuid())
+  title            String
+  description      String
+  price            Decimal    @db.Decimal(10, 2)
+
+  city             String
+  address          String
+  latitude         Float?
+  longitude        Float?
+  placeId          String?
+
+  status           JobStatus  @default(OPEN)
+
+  clientId         String
+  client           User       @relation("ClientJobs", fields: [clientId], references: [id])
+
+  assignedWorkerId String?
+  assignedWorker   User?      @relation("AssignedWorkerJobs", fields: [assignedWorkerId], references: [id])
+
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
 }
