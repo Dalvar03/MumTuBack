@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-export class UserResponseDto {
+export class CurrentUserResponseDto {
   @ApiProperty({
     example: 'a3f5c9d2-1234-4b8a-9c2a-abcdef123456',
     description: 'Unique user identifier (UUID)',
@@ -35,34 +35,10 @@ export class UserResponseDto {
   username: string | null;
 
   @ApiProperty({
-    example: 'Warsaw',
+    example: 'ACTIVE',
     nullable: true,
-    description: 'User city',
+    description: 'Status of authenticated user',
+    enum: ['ACTIVE', 'BLOCKED'],
   })
-  city: string | null;
-
-  @ApiProperty({
-    example: 25,
-    nullable: true,
-    description: 'Work radius in kilometers',
-  })
-  workRadiusKm: number | null;
-
-  @ApiProperty({
-    example: true,
-    description: 'Indicates whether onboarding is completed',
-  })
-  onboardingDone: boolean;
-
-  @ApiProperty({
-    example: '2026-03-30T10:15:30.000Z',
-    description: 'User creation timestamp (ISO string)',
-  })
-  createdAt: Date;
-
-  @ApiProperty({
-    example: '2026-03-30T10:15:30.000Z',
-    description: 'Last update timestamp (ISO string)',
-  })
-  updatedAt: Date;
+  status: 'ACTIVE' | 'BLOCKED';
 }

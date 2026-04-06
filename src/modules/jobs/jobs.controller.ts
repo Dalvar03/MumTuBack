@@ -12,7 +12,16 @@ import { Request } from 'express';
 import { JobsService } from './jobs.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
-import { ApiOperation } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
+import { JobResponseDto } from './dto/job-response.dto';
 
 type AuthenticatedRequest = Request & {
   user: {
@@ -20,6 +29,8 @@ type AuthenticatedRequest = Request & {
   };
 };
 
+@ApiTags('Jobs')
+@ApiBearerAuth()
 @Controller('jobs')
 @UseGuards(ClerkAuthGuard)
 export class JobsController {
@@ -31,21 +42,56 @@ export class JobsController {
     return this.jobsService.createJob(req.user.clerkUserId, dto);
   }
 
+  @ApiOperation({ summary: 'Get all open jobs' })
+  @ApiOkResponse({
+    description: 'List of open jobs',
+    type: JobResponseDto,
+    isArray: true,
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized' })
   @Get('open')
   getOpenJobs() {
     return this.jobsService.getOpenJobs();
   }
 
+  @ApiOperation({ summary: 'Get jobs created by the current user' })
+  @ApiOkResponse({
+    description: 'List of jobs created by current user',
+    type: JobResponseDto,
+    isArray: true,
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized' })
+  @ApiNotFoundResponse({ description: 'User not found' })
   @Get('my-created')
   getMyCreatedJobs(@Req() req: AuthenticatedRequest) {
     return this.jobsService.getMyCreatedJobs(req.user.clerkUserId);
   }
 
+  @ApiOperation({ summary: 'Get jobs assigned to the current worker' })
+  @ApiOkResponse({
+    description: 'List of jobs assigned to current user',
+    type: JobResponseDto,
+    isArray: true,
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized' })
+  @ApiNotFoundResponse({ description: 'User not found' })
   @Get('my-assigned')
   getMyAssignedJobs(@Req() req: AuthenticatedRequest) {
     return this.jobsService.getMyAssignedJobs(req.user.clerkUserId);
   }
 
+  @ApiOperation({ summary: 'Get job details by ID' })
+  @ApiParam({
+    name: 'id',
+    description: 'Job ID',
+    example: 'cm9job123abc456def',
+  })
+  @ApiOkResponse({
+    description: 'Job details',
+    type: JobResponseDto,
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized' })
+  @ApiNotFoundResponse({ description: 'Job not found' })
   @Get(':id')
   getJobById(@Param('id') id: string) {
     return this.jobsService.getJobById(id);
