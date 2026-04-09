@@ -8,6 +8,12 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
   constructor() {
     const connectionString = process.env.DATABASE_URL;
 
+    console.log('DB URL exists:', !!process.env.DATABASE_URL);
+    console.log(
+      'DB URL starts with postgres:',
+      process.env.DATABASE_URL?.startsWith('postgres://') ||
+        process.env.DATABASE_URL?.startsWith('postgresql://'),
+    );
     if (!connectionString) {
       throw new Error('DATABASE_URL is not set');
     }

@@ -53,6 +53,7 @@ model Job {
   latitude         Float?
   longitude        Float?
   placeId          String?
+  category         String
 
   status           JobStatus  @default(OPEN)
 
@@ -64,4 +65,15 @@ model Job {
 
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
+  imageIds         JobImage[]
+}
+
+model JobImage {
+  id        String   @id @default(cuid())
+  jobId     String
+  url       String
+  key       String
+  createdAt DateTime @default(now())
+
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
 }

@@ -7,7 +7,12 @@ import {
   Post,
   Req,
   UseGuards,
+  UseInterceptors,
+  BadRequestException,
+  UploadedFiles,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import multer from 'multer';
 import { Request } from 'express';
 import { JobsService } from './jobs.service';
 import { CreateJobDto } from './dto/create-job.dto';
@@ -20,6 +25,8 @@ import {
   ApiParam,
   ApiTags,
   ApiUnauthorizedResponse,
+  ApiConsumes,
+  ApiBody,
 } from '@nestjs/swagger';
 import { JobResponseDto } from './dto/job-response.dto';
 
@@ -36,10 +43,68 @@ type AuthenticatedRequest = Request & {
 export class JobsController {
   constructor(private readonly jobsService: JobsService) {}
 
-  @ApiOperation({ summary: 'Create a new job (CLIENT only)' })
+  @ApiOperation({ summary: 'Create a new job with optional photos' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        description: { type: 'string' },
+        price: { type: 'number' },
+        city: { type: 'string' },
+        category: { type: 'string' },
+        address: { type: 'string' },
+        latitude: { type: 'number' },
+        longitude: { type: 'number' },
+        placeId: { type: 'string' },
+        photos: {
+          type: 'array',
+          items: {
+            type: 'file',
+            format: 'binary',
+          },
+        },
+      },
+      required: [
+        'title',
+        'description',
+        'price',
+        'city',
+        'address',
+        'category',
+      ],
+    },
+  })
+  @UseInterceptors(
+    FilesInterceptor('photos', 10, {
+      storage: multer.memoryStorage(),
+      limits: {
+        fileSize: 5 * 1024 * 1024,
+      },
+      fileFilter: (_req, file, cb) => {
+        const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
+
+        if (!allowedMimeTypes.includes(file.mimetype)) {
+          return cb(
+            new BadRequestException(
+              'Only JPG, PNG, and WEBP images are allowed',
+            ),
+            false,
+          );
+        }
+
+        cb(null, true);
+      },
+    }),
+  )
   @Post()
-  createJob(@Req() req: AuthenticatedRequest, @Body() dto: CreateJobDto) {
-    return this.jobsService.createJob(req.user.clerkUserId, dto);
+  async createJob(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: CreateJobDto,
+    @UploadedFiles() photos: Express.Multer.File[],
+  ) {
+    return this.jobsService.createJob(req.user.clerkUserId, dto, photos ?? []);
   }
 
   @ApiOperation({ summary: 'Get all open jobs' })

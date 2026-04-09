@@ -25,6 +25,11 @@ export class JobResponseDto {
   price: string;
 
   @ApiProperty({
+    example: 'Cleaning',
+  })
+  category: string;
+
+  @ApiProperty({
     example: 'Warsaw',
   })
   city: string;

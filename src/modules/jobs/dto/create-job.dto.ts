@@ -45,6 +45,17 @@ export class CreateJobDto {
   )
   city: string;
 
+  @ApiProperty({
+    example: 'Cleaning',
+  })
+  @MinLength(3)
+  @MaxLength(255)
+  @IsString()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  category: string;
+
   @ApiProperty({ example: 'Shevchenka 10, Lviv' })
   @IsString()
   @MinLength(3)

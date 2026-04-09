@@ -7,12 +7,20 @@ import {
 import { JobStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { CreateJobDto } from './dto/create-job.dto';
+import { S3Service } from 'src/common/s3/s3.service';
 
 @Injectable()
 export class JobsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly s3Service: S3Service,
+  ) {}
 
-  async createJob(clerkUserId: string, dto: CreateJobDto) {
+  async createJob(
+    clerkUserId: string,
+    dto: CreateJobDto,
+    photos: Express.Multer.File[],
+  ) {
     const user = await this.prisma.user.findUnique({
       where: { clerkUserId },
     });
@@ -31,6 +39,10 @@ export class JobsService {
     const address = dto.address.trim();
     const price = new Prisma.Decimal(dto.price);
 
+    const uploadedPhotos = await Promise.all(
+      photos.map((photo) => this.s3Service.uploadFile(photo, 'jobs')),
+    );
+
     return this.prisma.job.create({
       data: {
         title,
@@ -38,10 +50,20 @@ export class JobsService {
         price,
         city,
         address,
+        category: dto.category,
         latitude: dto.latitude ?? null,
         longitude: dto.longitude ?? null,
         placeId: dto.placeId ?? null,
         clientId: user.id,
+        ImageIds: {
+          create: uploadedPhotos.map((photo) => ({
+            url: photo.url,
+            key: photo.key,
+          })),
+        },
+      },
+      include: {
+        ImageIds: true,
       },
     });
   }
