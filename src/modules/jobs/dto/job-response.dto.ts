@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { JobStatus } from '@prisma/client';
 import { UserResponseDto } from '../../users/dto/user-response.dto';
+import { JobImageResponseDto } from './job-image-response';
 
 export class JobResponseDto {
   @ApiProperty({
@@ -94,4 +95,7 @@ export class JobResponseDto {
     example: '2026-03-30T12:30:00.000Z',
   })
   updatedAt: Date;
+
+  @ApiProperty({ type: [JobImageResponseDto] })
+  imageIds: JobImageResponseDto[];
 }

@@ -77,6 +77,7 @@ export class JobsService {
       include: {
         client: true,
         assignedWorker: true,
+        imageIds: true,
       },
       orderBy: {
         createdAt: 'desc',
@@ -100,6 +101,7 @@ export class JobsService {
       include: {
         client: true,
         assignedWorker: true,
+        imageIds: true,
       },
       orderBy: {
         createdAt: 'desc',
@@ -123,6 +125,7 @@ export class JobsService {
       include: {
         client: true,
         assignedWorker: true,
+        imageIds: true,
       },
       orderBy: {
         createdAt: 'desc',
@@ -136,6 +139,7 @@ export class JobsService {
       include: {
         client: true,
         assignedWorker: true,
+        imageIds: true,
       },
     });
 
