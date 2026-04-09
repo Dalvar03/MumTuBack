@@ -55,7 +55,7 @@ export class JobsService {
         longitude: dto.longitude ?? null,
         placeId: dto.placeId ?? null,
         clientId: user.id,
-        ImageIds: {
+        imageIds: {
           create: uploadedPhotos.map((photo) => ({
             url: photo.url,
             key: photo.key,
@@ -63,7 +63,7 @@ export class JobsService {
         },
       },
       include: {
-        ImageIds: true,
+        imageIds: true,
       },
     });
   }
