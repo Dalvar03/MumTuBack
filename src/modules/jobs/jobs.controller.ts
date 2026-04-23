@@ -171,4 +171,9 @@ export class JobsController {
   cancelJob(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.jobsService.cancelJob(req.user.clerkUserId, id);
   }
+
+  @Patch(':id/done')
+  markAsCompleted(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.jobsService.markAsCompletedByClient(id, req.user.clerkUserId);
+  }
 }

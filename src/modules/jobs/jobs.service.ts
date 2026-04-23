@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -223,5 +224,50 @@ export class JobsService {
         assignedWorker: true,
       },
     });
+  }
+
+  async markAsCompletedByClient(jobId: string, clerkUserId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { clerkUserId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const job = await this.prisma.job.findUnique({
+      where: { id: jobId },
+      include: {
+        client: true,
+        assignedWorker: true,
+      },
+    });
+
+    if (!job) {
+      throw new NotFoundException('Job not found');
+    }
+
+    if (job.clientId !== user.id) {
+      throw new ForbiddenException('You can complete only your own jobs');
+    }
+
+    if (!job.assignedWorkerId) {
+      throw new BadRequestException('Job has no assigned worker');
+    }
+
+    if (job.status !== JobStatus.IN_PROGRESS) {
+      throw new BadRequestException(
+        'Only jobs in progress can be marked as completed',
+      );
+    }
+
+    const updatedJob = await this.prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status: JobStatus.COMPLETED,
+      },
+    });
+
+    return updatedJob;
   }
 }
