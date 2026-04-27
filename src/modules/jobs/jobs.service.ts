@@ -206,9 +206,11 @@ export class JobsService {
       throw new NotFoundException('Job not found');
     }
 
-    if (job.status !== JobStatus.OPEN) {
-      throw new ConflictException('Only open jobs can be cancelled');
-    }
+    // TODO: Restrict to cancel only related to user jobs
+
+    // if (job.status !== JobStatus.OPEN) {
+    //   throw new ConflictException('Only open jobs can be cancelled');
+    // }
 
     return this.prisma.job.update({
       where: { id: jobId },
