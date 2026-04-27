@@ -253,11 +253,11 @@ export class JobsService {
       throw new BadRequestException('Job has no assigned worker');
     }
 
-    if (job.status !== JobStatus.IN_PROGRESS) {
-      throw new BadRequestException(
-        'Only jobs in progress can be marked as completed',
-      );
-    }
+    // if (job.status !== JobStatus.ASSIGNED) {
+    //   throw new BadRequestException(
+    //     'Only jobs in progress can be marked as completed',
+    //   );
+    // }
 
     const updatedJob = await this.prisma.job.update({
       where: { id: jobId },
