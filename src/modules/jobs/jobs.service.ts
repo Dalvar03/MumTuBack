@@ -206,10 +206,6 @@ export class JobsService {
       throw new NotFoundException('Job not found');
     }
 
-    if (job.clientId !== user.id) {
-      throw new ForbiddenException('You can cancel only your own jobs');
-    }
-
     if (job.status !== JobStatus.OPEN) {
       throw new ConflictException('Only open jobs can be cancelled');
     }
