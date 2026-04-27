@@ -12,6 +12,7 @@ import AdminJS from 'adminjs';
 
 AdminJS.registerAdapter({ Database, Resource });
 
+// TODO: Move to env
 const DEFAULT_ADMIN = {
   email: 'admin@example.com',
   password: 'password',
@@ -43,6 +44,14 @@ const authenticate = async (email: string, password: string) => {
                 {
                   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
                   resource: { model: getModelByName('User'), client: prisma },
+                  options: {},
+                },
+                {
+                  resource: {
+                    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+                    model: getModelByName('Job'),
+                    client: prisma,
+                  },
                   options: {},
                 },
               ],
