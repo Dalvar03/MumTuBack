@@ -17,7 +17,7 @@ export class CreateJobDto {
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )
-  title: string;
+  title!: string;
 
   @ApiProperty({
     example: 'Need cleaning after rental for a 3-room apartment',
@@ -28,13 +28,13 @@ export class CreateJobDto {
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )
-  description: string;
+  description!: string;
 
   @ApiProperty({ example: 350 })
   @Transform(({ value }: { value: unknown }) => Number(value))
   @IsNumber()
   @Min(0)
-  price: number;
+  price!: number;
 
   @ApiProperty({ example: 'Lviv' })
   @IsString()
@@ -43,7 +43,7 @@ export class CreateJobDto {
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )
-  city: string;
+  city!: string;
 
   @ApiProperty({
     example: 'Cleaning',
@@ -54,7 +54,7 @@ export class CreateJobDto {
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )
-  category: string;
+  category!: string;
 
   @ApiProperty({ example: 'Shevchenka 10, Lviv' })
   @IsString()
@@ -63,7 +63,7 @@ export class CreateJobDto {
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )
-  address: string;
+  address!: string;
 
   @ApiPropertyOptional({ example: 49.8397 })
   @IsOptional()

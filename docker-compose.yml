@@ -4,6 +4,7 @@ services:
     container_name: mamtu-postgres
     restart: unless-stopped
     environment:
+      TZ: UTC
       POSTGRES_DB: mamtu
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres

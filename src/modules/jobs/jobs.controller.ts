@@ -10,6 +10,7 @@ import {
   UseInterceptors,
   BadRequestException,
   UploadedFiles,
+  Query,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import multer from 'multer';
@@ -29,6 +30,10 @@ import {
   ApiBody,
 } from '@nestjs/swagger';
 import { JobResponseDto } from './dto/job-response.dto';
+import { OpenJobsQueryDto } from './dto/open-jobs-query.dto';
+import { PaginatedJobsResponseDto } from './dto/paginated-jobs-response';
+import { TakeJobDto } from './dto/take-job-dto';
+import { RateJobDto } from './dto/rate-job.dto';
 
 type AuthenticatedRequest = Request & {
   user: {
@@ -110,13 +115,15 @@ export class JobsController {
   @ApiOperation({ summary: 'Get all open jobs' })
   @ApiOkResponse({
     description: 'List of open jobs',
-    type: JobResponseDto,
-    isArray: true,
+    type: PaginatedJobsResponseDto,
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized' })
   @Get('open')
-  getOpenJobs() {
-    return this.jobsService.getOpenJobs();
+  getOpenJobs(
+    @Req() req: AuthenticatedRequest,
+    @Query() query: OpenJobsQueryDto,
+  ) {
+    return this.jobsService.getOpenJobs(req.user.clerkUserId, query);
   }
 
   @ApiOperation({ summary: 'Get jobs created by the current user' })
@@ -163,8 +170,12 @@ export class JobsController {
   }
 
   @Patch(':id/take')
-  takeJob(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
-    return this.jobsService.takeJob(req.user.clerkUserId, id);
+  takeJob(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: TakeJobDto,
+  ) {
+    return this.jobsService.takeJob(req.user.clerkUserId, id, body);
   }
 
   @Patch(':id/cancel')
@@ -175,5 +186,11 @@ export class JobsController {
   @Patch(':id/done')
   markAsCompleted(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.jobsService.markAsCompletedByClient(id, req.user.clerkUserId);
+  }
+
+  @Post('rate')
+  @UseGuards(ClerkAuthGuard)
+  rate(@Body() dto: RateJobDto, @Req() req: AuthenticatedRequest) {
+    return this.jobsService.rateJob(dto, req.user.id);
   }
 }

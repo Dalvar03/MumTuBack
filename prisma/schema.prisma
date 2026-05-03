@@ -26,13 +26,22 @@ model User {
   username         String?
   city             String?
   workRadiusKm     Int?
+  latitude         Float?
+  longitude        Float?
+  address         String?
   onboardingDone   Boolean   @default(false)
+  phoneNumber      String?   
 
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
   createdJobs      Job[]     @relation("ClientJobs")
   assignedJobs     Job[]     @relation("AssignedWorkerJobs")
+
+  payoutDetails WorkerPayoutDetails?
+
+  averageRating Float?
+  ratingsCount  Int    @default(0)
 }
 
 enum JobStatus {
@@ -67,6 +76,8 @@ model Job {
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
   imageIds         JobImage[]
+
+   ratings   Rating[]
 }
 
 model JobImage {
@@ -77,4 +88,32 @@ model JobImage {
   createdAt DateTime @default(now())
 
   job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+}
+
+model WorkerPayoutDetails {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  details   String   @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Rating {
+  id        String   @id @default(uuid())
+
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id])
+
+  fromUserId String
+  toUserId   String
+
+  value     Int      // 1–5
+  comment   String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([jobId, fromUserId]) // 1 оцінка від юзера на джобу
 }

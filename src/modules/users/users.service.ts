@@ -80,6 +80,10 @@ export class UsersService {
         workRadiusKm:
           dto.role === UserRoleDto.WORKER ? (dto.workRadiusKm ?? null) : null,
         onboardingDone: true,
+        address: dto.address,
+        longitude: dto.longitude,
+        latitude: dto.latitude,
+        phoneNumber: dto.phoneNumber,
       },
     });
   }

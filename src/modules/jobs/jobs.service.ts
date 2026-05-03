@@ -9,6 +9,10 @@ import { JobStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { S3Service } from 'src/common/s3/s3.service';
+import { OpenJobsQueryDto } from './dto/open-jobs-query.dto';
+import { buildJobsWhere } from './utils/queryBuilder';
+import { TakeJobDto } from './dto/take-job-dto';
+import { RateJobDto } from './dto/rate-job.dto';
 
 @Injectable()
 export class JobsService {
@@ -69,21 +73,73 @@ export class JobsService {
     });
   }
 
-  async getOpenJobs() {
-    return this.prisma.job.findMany({
-      where: {
-        status: JobStatus.OPEN,
-        assignedWorkerId: null,
-      },
-      include: {
-        client: true,
-        assignedWorker: true,
-        imageIds: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
+  async getOpenJobs(clerkUserId: string, query: OpenJobsQueryDto) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const offset = (page - 1) * limit;
+
+    const worker = await this.prisma.user.findUnique({
+      where: { clerkUserId },
     });
+
+    if (
+      !worker ||
+      worker.role !== 'WORKER' ||
+      worker.latitude === null ||
+      worker.longitude === null ||
+      worker.workRadiusKm === null
+    ) {
+      return {
+        data: [],
+        meta: { page, limit, total: 0, totalPages: 0 },
+      };
+    }
+
+    const whereSql = buildJobsWhere({
+      workerLat: worker.latitude,
+      workerLon: worker.longitude,
+      radiusKm: worker.workRadiusKm,
+      minPrice: query.minPrice,
+      maxPrice: query.maxPrice,
+      category: query.category,
+    });
+
+    const data = await this.prisma.$queryRaw`
+  SELECT
+    j.*,
+    (
+      6371 * acos(
+        cos(radians(${worker.latitude}))
+        * cos(radians(j.latitude))
+        * cos(radians(j.longitude) - radians(${worker.longitude}))
+        + sin(radians(${worker.latitude}))
+        * sin(radians(j.latitude))
+      )
+    ) AS "distanceKm"
+  FROM "Job" j
+  WHERE ${whereSql}
+  ORDER BY "distanceKm" ASC
+  LIMIT ${limit}
+  OFFSET ${offset};
+`;
+
+    const totalResult = await this.prisma.$queryRaw<{ count: bigint }[]>`
+  SELECT COUNT(*)::bigint AS count
+  FROM "Job" j
+  WHERE ${whereSql};
+`;
+
+    const total = Number(totalResult[0]?.count ?? 0);
+
+    return {
+      data,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   async getMyCreatedJobs(clerkUserId: string) {
@@ -151,9 +207,12 @@ export class JobsService {
     return job;
   }
 
-  async takeJob(clerkUserId: string, jobId: string) {
+  async takeJob(clerkUserId: string, jobId: string, dto: TakeJobDto) {
     const user = await this.prisma.user.findUnique({
       where: { clerkUserId },
+      include: {
+        payoutDetails: true,
+      },
     });
 
     if (!user) {
@@ -162,6 +221,21 @@ export class JobsService {
 
     if (user.role !== 'WORKER') {
       throw new ForbiddenException('Only workers can take jobs');
+    }
+
+    if (!user.payoutDetails && !dto.payoutDetails) {
+      throw new BadRequestException('Payout details are required');
+    }
+
+    if (dto.payoutDetails) {
+      await this.prisma.workerPayoutDetails.upsert({
+        where: { userId: user.id },
+        update: { details: dto.payoutDetails },
+        create: {
+          userId: user.id,
+          details: dto.payoutDetails,
+        },
+      });
     }
 
     const result = await this.prisma.job.updateMany({
@@ -206,22 +280,47 @@ export class JobsService {
       throw new NotFoundException('Job not found');
     }
 
-    // TODO: Restrict to cancel only related to user jobs
+    if (user.role === 'CLIENT') {
+      if (job.status !== JobStatus.OPEN) {
+        throw new ConflictException('Only open jobs can be cancelled');
+      }
 
-    // if (job.status !== JobStatus.OPEN) {
-    //   throw new ConflictException('Only open jobs can be cancelled');
-    // }
+      if (job.clientId !== user.id) {
+        throw new ForbiddenException('Only own jobs can be cancelled');
+      }
 
-    return this.prisma.job.update({
-      where: { id: jobId },
-      data: {
-        status: JobStatus.CANCELLED,
-      },
-      include: {
-        client: true,
-        assignedWorker: true,
-      },
-    });
+      return this.prisma.job.delete({
+        where: { id: jobId },
+        include: {
+          client: true,
+          assignedWorker: true,
+        },
+      });
+    }
+
+    if (user.role === 'WORKER') {
+      if (job.status !== JobStatus.ASSIGNED) {
+        throw new ConflictException('Only not completed job can be cancelled');
+      }
+
+      if (job.assignedWorkerId !== user.id) {
+        throw new ForbiddenException('Only own jobs can be cancelled');
+      }
+
+      return this.prisma.job.update({
+        where: {
+          id: jobId,
+        },
+        data: {
+          assignedWorkerId: null,
+          status: JobStatus.OPEN,
+        },
+        include: {
+          assignedWorker: true,
+          client: true,
+        },
+      });
+    }
   }
 
   async markAsCompletedByClient(jobId: string, clerkUserId: string) {
@@ -253,12 +352,6 @@ export class JobsService {
       throw new BadRequestException('Job has no assigned worker');
     }
 
-    // if (job.status !== JobStatus.ASSIGNED) {
-    //   throw new BadRequestException(
-    //     'Only jobs in progress can be marked as completed',
-    //   );
-    // }
-
     const updatedJob = await this.prisma.job.update({
       where: { id: jobId },
       data: {
@@ -267,5 +360,59 @@ export class JobsService {
     });
 
     return updatedJob;
+  }
+
+  async rateJob(dto: RateJobDto, fromUserId: string) {
+    const job = await this.prisma.job.findUnique({
+      where: { id: dto.jobId },
+    });
+
+    if (!job) throw new NotFoundException();
+
+    if (job.status !== 'COMPLETED') {
+      throw new BadRequestException('Job not completed');
+    }
+
+    const toUserId =
+      job.assignedWorkerId === fromUserId ? job.clientId : job.assignedWorkerId;
+
+    if (!toUserId) {
+      throw new BadRequestException('No user to rate');
+    }
+
+    const rating = await this.prisma.rating.create({
+      data: {
+        jobId: dto.jobId,
+        fromUserId,
+        toUserId,
+        value: dto.value,
+        comment: dto.comment,
+      },
+    });
+
+    // 🔥 апдейт рейтингу юзера
+    await this.updateUserRating(toUserId, dto.value);
+
+    return rating;
+  }
+
+  private async updateUserRating(userId: string, newRating: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    const newCount = (user?.ratingsCount || 0) + 1;
+
+    const newAvg =
+      ((user?.averageRating || 0) * (user?.ratingsCount || 0) + newRating) /
+      newCount;
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        averageRating: newAvg,
+        ratingsCount: newCount,
+      },
+    });
   }
 }
