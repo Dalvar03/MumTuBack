@@ -197,6 +197,7 @@ export class JobsService {
         client: true,
         assignedWorker: true,
         imageIds: true,
+        conversation: true,
       },
     });
 
