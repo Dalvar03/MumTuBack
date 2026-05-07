@@ -42,6 +42,11 @@ model User {
 
   averageRating Float?
   ratingsCount  Int    @default(0)
+
+  sentMessages Message[]
+
+  clientConversations Conversation[] @relation("ClientConversations")
+  workerConversations Conversation[] @relation("WorkerConversations")
 }
 
 enum JobStatus {
@@ -77,7 +82,9 @@ model Job {
   updatedAt        DateTime   @updatedAt
   imageIds         JobImage[]
 
-   ratings   Rating[]
+  ratings   Rating[]
+
+  conversation Conversation?
 }
 
 model JobImage {
@@ -115,5 +122,34 @@ model Rating {
 
   createdAt DateTime @default(now())
 
-  @@unique([jobId, fromUserId]) // 1 оцінка від юзера на джобу
+  @@unique([jobId, fromUserId])
+}
+
+model Conversation {
+  id        String   @id @default(uuid())
+  jobId     String   @unique
+  clientId  String
+  workerId  String
+
+  job       Job      @relation(fields: [jobId], references: [id])
+  client    User     @relation("ClientConversations", fields: [clientId], references: [id])
+  worker    User     @relation("WorkerConversations", fields: [workerId], references: [id])
+
+  messages  Message[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  conversationId String
+  senderId       String
+  text           String
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  sender         User         @relation(fields: [senderId], references: [id])
+
+  readAt         DateTime?
+  createdAt      DateTime @default(now())
 }

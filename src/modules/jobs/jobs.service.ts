@@ -227,39 +227,59 @@ export class JobsService {
       throw new BadRequestException('Payout details are required');
     }
 
-    if (dto.payoutDetails) {
-      await this.prisma.workerPayoutDetails.upsert({
-        where: { userId: user.id },
-        update: { details: dto.payoutDetails },
-        create: {
-          userId: user.id,
-          details: dto.payoutDetails,
+    return this.prisma.$transaction(async (tx) => {
+      if (dto.payoutDetails) {
+        await tx.workerPayoutDetails.upsert({
+          where: { userId: user.id },
+          update: { details: dto.payoutDetails },
+          create: {
+            userId: user.id,
+            details: dto.payoutDetails,
+          },
+        });
+      }
+
+      const result = await tx.job.updateMany({
+        where: {
+          id: jobId,
+          status: JobStatus.OPEN,
+          assignedWorkerId: null,
+        },
+        data: {
+          status: JobStatus.ASSIGNED,
+          assignedWorkerId: user.id,
         },
       });
-    }
 
-    const result = await this.prisma.job.updateMany({
-      where: {
-        id: jobId,
-        status: JobStatus.OPEN,
-        assignedWorkerId: null,
-      },
-      data: {
-        status: JobStatus.ASSIGNED,
-        assignedWorkerId: user.id,
-      },
-    });
+      if (result.count === 0) {
+        throw new ConflictException('Job is already taken or unavailable');
+      }
 
-    if (result.count === 0) {
-      throw new ConflictException('Job is already taken or unavailable');
-    }
+      const job = await tx.job.findUnique({
+        where: { id: jobId },
+        include: {
+          client: true,
+          assignedWorker: true,
+        },
+      });
 
-    return this.prisma.job.findUnique({
-      where: { id: jobId },
-      include: {
-        client: true,
-        assignedWorker: true,
-      },
+      if (!job) {
+        throw new NotFoundException('Job not found');
+      }
+
+      await tx.conversation.upsert({
+        where: {
+          jobId: job.id,
+        },
+        update: {},
+        create: {
+          jobId: job.id,
+          clientId: job.clientId,
+          workerId: user.id,
+        },
+      });
+
+      return job;
     });
   }
 

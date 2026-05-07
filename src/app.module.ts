@@ -8,6 +8,7 @@ import { JobsModule } from './modules/jobs/jobs.module';
 import { S3Module } from './common/s3/s3.module';
 import { PrismaService } from './database/prisma/prisma.service';
 import { Database, Resource, getModelByName } from '@adminjs/prisma';
+import { ConversationsModule } from './modules/conversations/conversations.module';
 import AdminJS from 'adminjs';
 
 AdminJS.registerAdapter({ Database, Resource });
@@ -70,6 +71,7 @@ const authenticate = async (email: string, password: string) => {
         },
       }),
     ),
+    ConversationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
