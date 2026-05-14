@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -7,10 +8,16 @@ import {
 import { PrismaService } from 'src/database/prisma/prisma.service';
 import { SendMessageDto } from './dtos/send-message.dto';
 import { ConversationsMapper } from './conversation.mapper';
+import { S3Service } from 'src/common/s3/s3.service';
+import { ConversationsGateway } from './conversation.gateway';
 
 @Injectable()
 export class ConversationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly s3Service: S3Service,
+    private readonly conversationsGateway: ConversationsGateway,
+  ) {}
 
   private async getCurrentUser(clerkUserId: string) {
     const user = await this.prisma.user.findUnique({
@@ -121,17 +128,36 @@ export class ConversationsService {
     clerkUserId: string,
     conversationId: string,
     dto: SendMessageDto,
+    image?: Express.Multer.File,
   ) {
     const user = await this.getCurrentUser(clerkUserId);
 
     await this.getConversationOrThrow(conversationId, user.id);
+
+    const text = dto.text?.trim();
+
+    if (!text && !image) {
+      throw new BadRequestException('Message text or image is required');
+    }
+
+    let imageUrl: string | null = null;
+
+    if (image) {
+      imageUrl = (
+        await this.s3Service.uploadFile(
+          image,
+          `conversations/${conversationId}`,
+        )
+      ).url;
+    }
 
     const message = await this.prisma.$transaction(async (tx) => {
       const createdMessage = await tx.message.create({
         data: {
           conversationId,
           senderId: user.id,
-          text: dto.text.trim(),
+          text: text || '',
+          imageUrl,
         },
         include: {
           sender: true,
@@ -149,6 +175,8 @@ export class ConversationsService {
 
       return createdMessage;
     });
+
+    this.conversationsGateway.emitMessageCreated(conversationId);
 
     return ConversationsMapper.toMessageDto(message);
   }

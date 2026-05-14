@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class MessageSenderDto {
   @ApiProperty()
@@ -20,6 +20,9 @@ export class MessageResponseDto {
 
   @ApiProperty()
   text!: string;
+
+  @ApiPropertyOptional()
+  imageUrl?: string | null;
 
   @ApiProperty({ nullable: true })
   readAt!: Date | null;

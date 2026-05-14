@@ -146,6 +146,7 @@ model Message {
   conversationId String
   senderId       String
   text           String
+  imageUrl       String?
 
   conversation   Conversation @relation(fields: [conversationId], references: [id])
   sender         User         @relation(fields: [senderId], references: [id])

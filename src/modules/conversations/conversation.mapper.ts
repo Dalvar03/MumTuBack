@@ -53,6 +53,7 @@ export class ConversationsMapper {
       text: message.text,
       readAt: message.readAt,
       createdAt: message.createdAt,
+      imageUrl: message.imageUrl,
       sender: {
         id: message.sender.id,
         username: message.sender.username,

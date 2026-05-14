@@ -6,10 +6,14 @@ import {
   Patch,
   Post,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
@@ -21,6 +25,7 @@ import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 import { SendMessageDto } from './dtos/send-message.dto';
 import { ConversationResponseDto } from './dtos/conversation-response.dto';
 import { MessageResponseDto } from './dtos/message-response.dto';
+import { FilesInterceptor } from '@nestjs/platform-express';
 
 type AuthenticatedRequest = Request & {
   user: {
@@ -72,9 +77,23 @@ export class ConversationsController {
     return this.conversationsService.getMessages(req.user.clerkUserId, id);
   }
 
-  @Post(':id/messages')
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string' },
+        image: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
   @ApiOperation({ summary: 'Send message to conversation' })
   @ApiParam({ name: 'id', example: 'clx123conversationid' })
+  @Post(':id/messages')
+  @UseInterceptors(FilesInterceptor('image'))
   @ApiCreatedResponse({
     type: MessageResponseDto,
   })
@@ -82,8 +101,14 @@ export class ConversationsController {
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
     @Body() dto: SendMessageDto,
+    @UploadedFile() image?: Express.Multer.File,
   ) {
-    return this.conversationsService.sendMessage(req.user.clerkUserId, id, dto);
+    return this.conversationsService.sendMessage(
+      req.user.clerkUserId,
+      id,
+      dto,
+      image,
+    );
   }
 
   @Patch(':id/read')
