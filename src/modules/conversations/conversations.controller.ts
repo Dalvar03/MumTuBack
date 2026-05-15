@@ -25,7 +25,7 @@ import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 import { SendMessageDto } from './dtos/send-message.dto';
 import { ConversationResponseDto } from './dtos/conversation-response.dto';
 import { MessageResponseDto } from './dtos/message-response.dto';
-import { FilesInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 type AuthenticatedRequest = Request & {
   user: {
@@ -93,7 +93,7 @@ export class ConversationsController {
   @ApiOperation({ summary: 'Send message to conversation' })
   @ApiParam({ name: 'id', example: 'clx123conversationid' })
   @Post(':id/messages')
-  @UseInterceptors(FilesInterceptor('image'))
+  @UseInterceptors(FileInterceptor('image'))
   @ApiCreatedResponse({
     type: MessageResponseDto,
   })
