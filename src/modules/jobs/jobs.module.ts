@@ -3,9 +3,10 @@ import { JobsController } from './jobs.controller';
 import { JobsService } from './jobs.service';
 import { AuthModule } from '../auth/auth.module';
 import { S3Module } from 'src/common/s3/s3.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [AuthModule, S3Module],
+  imports: [AuthModule, S3Module, NotificationsModule],
   controllers: [JobsController],
   providers: [JobsService],
   exports: [JobsService],

@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { JobStatus, Prisma } from '@prisma/client';
+import { JobStatus, NotificationType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { S3Service } from 'src/common/s3/s3.service';
@@ -13,12 +13,14 @@ import { OpenJobsQueryDto } from './dto/open-jobs-query.dto';
 import { buildJobsWhere } from './utils/queryBuilder';
 import { TakeJobDto } from './dto/take-job-dto';
 import { RateJobDto } from './dto/rate-job.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class JobsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly s3Service: S3Service,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async createJob(
@@ -228,7 +230,7 @@ export class JobsService {
       throw new BadRequestException('Payout details are required');
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const job = await this.prisma.$transaction(async (tx) => {
       if (dto.payoutDetails) {
         await tx.workerPayoutDetails.upsert({
           where: { userId: user.id },
@@ -256,7 +258,7 @@ export class JobsService {
         throw new ConflictException('Job is already taken or unavailable');
       }
 
-      const job = await tx.job.findUnique({
+      const updatedJob = await tx.job.findUnique({
         where: { id: jobId },
         include: {
           client: true,
@@ -264,24 +266,34 @@ export class JobsService {
         },
       });
 
-      if (!job) {
+      if (!updatedJob) {
         throw new NotFoundException('Job not found');
       }
 
       await tx.conversation.upsert({
         where: {
-          jobId: job.id,
+          jobId: updatedJob.id,
         },
         update: {},
         create: {
-          jobId: job.id,
-          clientId: job.clientId,
+          jobId: updatedJob.id,
+          clientId: updatedJob.clientId,
           workerId: user.id,
         },
       });
 
-      return job;
+      return updatedJob;
     });
+
+    await this.notificationsService.createNotification({
+      userId: job.clientId,
+      type: NotificationType.JOB_ASSIGNED,
+      title: 'Job assigned',
+      message: `${job.assignedWorker?.username ?? 'Worker'} accepted your job`,
+      jobId: job.id,
+    });
+
+    return job;
   }
 
   async cancelJob(clerkUserId: string, jobId: string) {

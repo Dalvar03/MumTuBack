@@ -10,6 +10,8 @@ import { SendMessageDto } from './dtos/send-message.dto';
 import { ConversationsMapper } from './conversation.mapper';
 import { S3Service } from 'src/common/s3/s3.service';
 import { ConversationsGateway } from './conversation.gateway';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '@prisma/client';
 
 @Injectable()
 export class ConversationsService {
@@ -17,6 +19,7 @@ export class ConversationsService {
     private readonly prisma: PrismaService,
     private readonly s3Service: S3Service,
     private readonly conversationsGateway: ConversationsGateway,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   private async getCurrentUser(clerkUserId: string) {
@@ -132,7 +135,10 @@ export class ConversationsService {
   ) {
     const user = await this.getCurrentUser(clerkUserId);
 
-    await this.getConversationOrThrow(conversationId, user.id);
+    const conversation = await this.getConversationOrThrow(
+      conversationId,
+      user.id,
+    );
 
     const text = dto.text?.trim();
 
@@ -177,6 +183,23 @@ export class ConversationsService {
     });
 
     this.conversationsGateway.emitMessageCreated(conversationId);
+
+    const recipientId =
+      conversation.clientId === user.id
+        ? conversation.workerId
+        : conversation.clientId;
+
+    if (recipientId && recipientId !== user.id) {
+      void this.notificationsService.createNotification({
+        userId: recipientId,
+        type: NotificationType.NEW_MESSAGE,
+        title: 'New message',
+        message: `${user.username ?? 'User'} sent you a message`,
+        conversationId: conversation.id,
+        messageId: message.id,
+        jobId: conversation.jobId,
+      });
+    }
 
     return ConversationsMapper.toMessageDto(message);
   }
