@@ -11,9 +11,9 @@ import { CreateJobDto } from './dto/create-job.dto';
 import { S3Service } from 'src/common/s3/s3.service';
 import { OpenJobsQueryDto } from './dto/open-jobs-query.dto';
 import { buildJobsWhere } from './utils/queryBuilder';
-import { TakeJobDto } from './dto/take-job-dto';
 import { RateJobDto } from './dto/rate-job.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PaymentsService } from '../payments/payments.service';
 
 @Injectable()
 export class JobsService {
@@ -21,6 +21,7 @@ export class JobsService {
     private readonly prisma: PrismaService,
     private readonly s3Service: S3Service,
     private readonly notificationsService: NotificationsService,
+    private readonly paymentsService: PaymentsService,
   ) {}
 
   async createJob(
@@ -45,16 +46,19 @@ export class JobsService {
     const city = dto.city.trim();
     const address = dto.address.trim();
     const price = new Prisma.Decimal(dto.price);
+    const paymentAmounts = this.paymentsService.getPaymentAmounts(price);
 
     const uploadedPhotos = await Promise.all(
       photos.map((photo) => this.s3Service.uploadFile(photo, 'jobs')),
     );
 
-    return this.prisma.job.create({
+    const job = await this.prisma.job.create({
       data: {
         title,
         description,
         price,
+        status: JobStatus.PAYMENT_PENDING,
+        ...paymentAmounts,
         city,
         address,
         category: dto.category,
@@ -62,6 +66,13 @@ export class JobsService {
         longitude: dto.longitude ?? null,
         placeId: dto.placeId ?? null,
         clientId: user.id,
+        payment: {
+          create: {
+            status: 'CREATED',
+            amountMinor: paymentAmounts.amountMinor,
+            currency: paymentAmounts.currency,
+          },
+        },
         imageIds: {
           create: uploadedPhotos.map((photo) => ({
             url: photo.url,
@@ -71,8 +82,19 @@ export class JobsService {
       },
       include: {
         imageIds: true,
+        payment: true,
       },
     });
+
+    const checkout = await this.paymentsService.createCheckoutSession(
+      job.id,
+      user.id,
+    );
+
+    return {
+      job,
+      ...checkout,
+    };
   }
 
   async getOpenJobs(clerkUserId: string, query: OpenJobsQueryDto) {
@@ -210,12 +232,9 @@ export class JobsService {
     return job;
   }
 
-  async takeJob(clerkUserId: string, jobId: string, dto: TakeJobDto) {
+  async takeJob(clerkUserId: string, jobId: string) {
     const user = await this.prisma.user.findUnique({
       where: { clerkUserId },
-      include: {
-        payoutDetails: true,
-      },
     });
 
     if (!user) {
@@ -226,27 +245,26 @@ export class JobsService {
       throw new ForbiddenException('Only workers can take jobs');
     }
 
-    if (!user.payoutDetails && !dto.payoutDetails) {
-      throw new BadRequestException('Payout details are required');
+    if (
+      !user.stripeAccountId ||
+      !user.stripeTransfersEnabled ||
+      !user.stripePayoutsEnabled ||
+      user.stripeOnboardingStatus !== 'COMPLETE'
+    ) {
+      throw new BadRequestException(
+        'Complete Stripe Connect onboarding before taking jobs',
+      );
     }
 
     const job = await this.prisma.$transaction(async (tx) => {
-      if (dto.payoutDetails) {
-        await tx.workerPayoutDetails.upsert({
-          where: { userId: user.id },
-          update: { details: dto.payoutDetails },
-          create: {
-            userId: user.id,
-            details: dto.payoutDetails,
-          },
-        });
-      }
-
       const result = await tx.job.updateMany({
         where: {
           id: jobId,
           status: JobStatus.OPEN,
           assignedWorkerId: null,
+          payment: {
+            status: 'SUCCEEDED',
+          },
         },
         data: {
           status: JobStatus.ASSIGNED,
@@ -314,7 +332,7 @@ export class JobsService {
     }
 
     if (user.role === 'CLIENT') {
-      if (job.status !== JobStatus.OPEN) {
+      if (job.status !== JobStatus.OPEN && job.status !== JobStatus.CANCELLED) {
         throw new ConflictException('Only open jobs can be cancelled');
       }
 
@@ -322,13 +340,11 @@ export class JobsService {
         throw new ForbiddenException('Only own jobs can be cancelled');
       }
 
-      return this.prisma.job.delete({
-        where: { id: jobId },
-        include: {
-          client: true,
-          assignedWorker: true,
-        },
-      });
+      if (job.assignedWorkerId) {
+        throw new ConflictException('Assigned jobs cannot be refunded');
+      }
+
+      return this.paymentsService.refundOpenJob(job.id, user.id);
     }
 
     if (user.role === 'WORKER') {
@@ -370,6 +386,8 @@ export class JobsService {
       include: {
         client: true,
         assignedWorker: true,
+        payment: true,
+        workerTransfer: true,
       },
     });
 
@@ -385,14 +403,87 @@ export class JobsService {
       throw new BadRequestException('Job has no assigned worker');
     }
 
-    const updatedJob = await this.prisma.job.update({
-      where: { id: jobId },
-      data: {
-        status: JobStatus.COMPLETED,
-      },
+    if (
+      job.payment?.status !== 'SUCCEEDED' ||
+      !job.paidAt ||
+      job.status === JobStatus.PAYMENT_PENDING
+    ) {
+      throw new ConflictException('Only paid jobs can be completed');
+    }
+
+    if (
+      !job.assignedWorker?.stripeAccountId ||
+      !job.assignedWorker.stripeTransfersEnabled ||
+      !job.assignedWorker.stripePayoutsEnabled ||
+      job.assignedWorker.stripeOnboardingStatus !== 'COMPLETE'
+    ) {
+      throw new ConflictException(
+        'Assigned worker Stripe account is not ready for transfers',
+      );
+    }
+
+    if (
+      job.status !== JobStatus.ASSIGNED &&
+      job.status !== JobStatus.IN_PROGRESS &&
+      job.status !== JobStatus.COMPLETED
+    ) {
+      throw new ConflictException(
+        'Only assigned or in-progress jobs can be completed',
+      );
+    }
+
+    const assignedWorkerId = job.assignedWorkerId;
+    const stripeAccountId = job.assignedWorker.stripeAccountId;
+
+    const workerTransfer = await this.prisma.$transaction(async (tx) => {
+      if (job.status !== JobStatus.COMPLETED) {
+        const result = await tx.job.updateMany({
+          where: {
+            id: job.id,
+            status: {
+              in: [JobStatus.ASSIGNED, JobStatus.IN_PROGRESS],
+            },
+          },
+          data: {
+            status: JobStatus.COMPLETED,
+            completedAt: new Date(),
+          },
+        });
+
+        if (result.count === 0) {
+          const currentJob = await tx.job.findUnique({
+            where: { id: job.id },
+            select: { status: true },
+          });
+
+          if (currentJob?.status !== JobStatus.COMPLETED) {
+            throw new ConflictException('Job completion state changed');
+          }
+        }
+      }
+
+      return tx.workerTransfer.upsert({
+        where: { jobId: job.id },
+        update: {},
+        create: {
+          jobId: job.id,
+          workerId: assignedWorkerId,
+          stripeAccountId,
+          amountMinor: job.workerAmountMinor,
+          currency: job.currency,
+          status: 'PENDING',
+        },
+      });
     });
 
-    return updatedJob;
+    await this.paymentsService.executeWorkerTransfer(workerTransfer.id);
+
+    return this.prisma.job.findUnique({
+      where: { id: job.id },
+      include: {
+        workerTransfer: true,
+      },
+    });
   }
 
   async rateJob(dto: RateJobDto, fromUserId: string) {

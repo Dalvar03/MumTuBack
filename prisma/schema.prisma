@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url = env("DATABASE_URL")
+  url      = env("DATABASE_URL")
 }
 
 enum UserRole {
@@ -18,27 +18,35 @@ enum UserStatus {
 }
 
 model User {
-  id               String    @id @default(cuid())
-  clerkUserId      String    @unique
-  email            String    @unique
-  status           UserStatus @default(ACTIVE)
-  role             UserRole?
-  username         String?
-  city             String?
-  workRadiusKm     Int?
-  latitude         Float?
-  longitude        Float?
-  address         String?
-  onboardingDone   Boolean   @default(false)
-  phoneNumber      String?   
+  id                     String                 @id @default(cuid())
+  clerkUserId            String                 @unique
+  email                  String                 @unique
+  status                 UserStatus             @default(ACTIVE)
+  role                   UserRole?
+  username               String?
+  city                   String?
+  workRadiusKm           Int?
+  latitude               Float?
+  longitude              Float?
+  address                String?
+  onboardingDone         Boolean                @default(false)
+  phoneNumber            String?
+  stripeCustomerId       String?                @unique
+  stripeAccountId        String?                @unique
+  stripeOnboardingStatus StripeOnboardingStatus @default(NOT_STARTED)
+  stripeDetailsSubmitted Boolean                @default(false)
+  stripeChargesEnabled   Boolean                @default(false)
+  stripePayoutsEnabled   Boolean                @default(false)
+  stripeTransfersEnabled Boolean                @default(false)
 
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  createdJobs      Job[]     @relation("ClientJobs")
-  assignedJobs     Job[]     @relation("AssignedWorkerJobs")
+  createdJobs  Job[] @relation("ClientJobs")
+  assignedJobs Job[] @relation("AssignedWorkerJobs")
 
-  payoutDetails WorkerPayoutDetails?
+  payoutDetails   WorkerPayoutDetails?
+  workerTransfers WorkerTransfer[]
 
   averageRating Float?
   ratingsCount  Int    @default(0)
@@ -52,6 +60,7 @@ model User {
 }
 
 enum JobStatus {
+  PAYMENT_PENDING
   OPEN
   ASSIGNED
   IN_PROGRESS
@@ -59,34 +68,120 @@ enum JobStatus {
   CANCELLED
 }
 
+enum StripeOnboardingStatus {
+  NOT_STARTED
+  PENDING
+  RESTRICTED
+  COMPLETE
+}
+
+enum JobPaymentStatus {
+  CREATED
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELED
+  REFUND_PENDING
+  REFUNDED
+  PARTIALLY_REFUNDED
+  DISPUTED
+}
+
+enum WorkerTransferStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REVERSED
+}
+
 model Job {
-  id               String     @id @default(cuid())
-  title            String
-  description      String
-  price            Decimal    @db.Decimal(10, 2)
+  id          String  @id @default(cuid())
+  title       String
+  description String
+  price       Decimal @db.Decimal(10, 2)
 
-  city             String
-  address          String
-  latitude         Float?
-  longitude        Float?
-  placeId          String?
-  category         String
+  city      String
+  address   String
+  latitude  Float?
+  longitude Float?
+  placeId   String?
+  category  String
 
-  status           JobStatus  @default(OPEN)
+  status            JobStatus @default(PAYMENT_PENDING)
+  amountMinor       Int
+  currency          String    @default("pln")
+  platformFeeMinor  Int
+  workerAmountMinor Int
+  paidAt            DateTime?
+  completedAt       DateTime?
+  cancelledAt       DateTime?
 
-  clientId         String
-  client           User       @relation("ClientJobs", fields: [clientId], references: [id])
+  clientId String
+  client   User   @relation("ClientJobs", fields: [clientId], references: [id])
 
   assignedWorkerId String?
-  assignedWorker   User?      @relation("AssignedWorkerJobs", fields: [assignedWorkerId], references: [id])
+  assignedWorker   User?   @relation("AssignedWorkerJobs", fields: [assignedWorkerId], references: [id])
 
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
-  imageIds         JobImage[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  imageIds  JobImage[]
 
-  ratings   Rating[]
+  ratings Rating[]
 
-  conversation Conversation?
+  conversation   Conversation?
+  payment        JobPayment?
+  workerTransfer WorkerTransfer?
+}
+
+model JobPayment {
+  id                      String           @id @default(cuid())
+  jobId                   String           @unique
+  job                     Job              @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  status                  JobPaymentStatus @default(CREATED)
+  amountMinor             Int
+  currency                String
+  stripeCheckoutSessionId String?          @unique
+  stripePaymentIntentId   String?          @unique
+  stripeChargeId          String?          @unique
+  stripeRefundId          String?          @unique
+  stripeCustomerId        String?
+  refundedAmountMinor     Int              @default(0)
+  refundRequestedAt       DateTime?
+  refundedAt              DateTime?
+  refundFailureMessage    String?
+  failureCode             String?
+  failureMessage          String?
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+
+  @@index([status])
+}
+
+model WorkerTransfer {
+  id               String               @id @default(cuid())
+  jobId            String               @unique
+  job              Job                  @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  workerId         String
+  worker           User                 @relation(fields: [workerId], references: [id], onDelete: Restrict)
+  stripeAccountId  String
+  stripeTransferId String?              @unique
+  amountMinor      Int
+  currency         String
+  status           WorkerTransferStatus @default(PENDING)
+  attemptCount     Int                  @default(0)
+  lastError        String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@index([workerId])
+  @@index([status])
+}
+
+model StripeWebhookEvent {
+  id            String   @id @default(cuid())
+  stripeEventId String   @unique
+  type          String
+  processedAt   DateTime @default(now())
 }
 
 model JobImage {
@@ -96,31 +191,31 @@ model JobImage {
   key       String
   createdAt DateTime @default(now())
 
-  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
 }
 
 model WorkerPayoutDetails {
-  id        String   @id @default(uuid())
-  userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  details   String   @db.Text
+  details String @db.Text
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model Rating {
-  id        String   @id @default(uuid())
+  id String @id @default(uuid())
 
-  jobId     String
-  job       Job      @relation(fields: [jobId], references: [id])
+  jobId String
+  job   Job    @relation(fields: [jobId], references: [id])
 
   fromUserId String
   toUserId   String
 
-  value     Int      // 1–5
-  comment   String?
+  value   Int // 1–5
+  comment String?
 
   createdAt DateTime @default(now())
 
@@ -128,33 +223,33 @@ model Rating {
 }
 
 model Conversation {
-  id        String   @id @default(uuid())
-  jobId     String   @unique
-  clientId  String
-  workerId  String
+  id       String @id @default(uuid())
+  jobId    String @unique
+  clientId String
+  workerId String
 
-  job       Job      @relation(fields: [jobId], references: [id])
-  client    User     @relation("ClientConversations", fields: [clientId], references: [id])
-  worker    User     @relation("WorkerConversations", fields: [workerId], references: [id])
+  job    Job  @relation(fields: [jobId], references: [id])
+  client User @relation("ClientConversations", fields: [clientId], references: [id])
+  worker User @relation("WorkerConversations", fields: [workerId], references: [id])
 
-  messages  Message[]
+  messages Message[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model Message {
-  id             String   @id @default(uuid())
+  id             String  @id @default(uuid())
   conversationId String
   senderId       String
   text           String
   imageUrl       String?
 
-  conversation   Conversation @relation(fields: [conversationId], references: [id])
-  sender         User         @relation(fields: [senderId], references: [id])
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  sender       User         @relation(fields: [senderId], references: [id])
 
-  readAt         DateTime?
-  createdAt      DateTime @default(now())
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
 }
 
 enum NotificationType {
@@ -163,20 +258,20 @@ enum NotificationType {
 }
 
 model Notification {
-  id             String   @id @default(cuid())
-  userId         String
-  type           NotificationType
+  id     String           @id @default(cuid())
+  userId String
+  type   NotificationType
 
-  title          String
-  message        String
-  isRead         Boolean  @default(false)
+  title   String
+  message String
+  isRead  Boolean @default(false)
 
   jobId          String?
   conversationId String?
   messageId      String?
 
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

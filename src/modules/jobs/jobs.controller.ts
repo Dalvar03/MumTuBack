@@ -32,7 +32,6 @@ import {
 import { JobResponseDto } from './dto/job-response.dto';
 import { OpenJobsQueryDto } from './dto/open-jobs-query.dto';
 import { PaginatedJobsResponseDto } from './dto/paginated-jobs-response';
-import { TakeJobDto } from './dto/take-job-dto';
 import { RateJobDto } from './dto/rate-job.dto';
 
 type AuthenticatedRequest = Request & {
@@ -170,12 +169,8 @@ export class JobsController {
   }
 
   @Patch(':id/take')
-  takeJob(
-    @Req() req: AuthenticatedRequest,
-    @Param('id') id: string,
-    @Body() body: TakeJobDto,
-  ) {
-    return this.jobsService.takeJob(req.user.clerkUserId, id, body);
+  takeJob(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    return this.jobsService.takeJob(req.user.clerkUserId, id);
   }
 
   @Patch(':id/cancel')

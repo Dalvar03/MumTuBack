@@ -11,6 +11,7 @@ import { Database, Resource, getModelByName } from '@adminjs/prisma';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import AdminJS from 'adminjs';
+import { PaymentsModule } from './modules/payments/payments.module';
 
 AdminJS.registerAdapter({ Database, Resource });
 
@@ -74,6 +75,7 @@ const authenticate = async (email: string, password: string) => {
     ),
     ConversationsModule,
     NotificationsModule,
+    PaymentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
