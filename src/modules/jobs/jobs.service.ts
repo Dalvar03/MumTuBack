@@ -122,6 +122,7 @@ export class JobsService {
     }
 
     const whereSql = buildJobsWhere({
+      status: query.status ?? JobStatus.OPEN,
       workerLat: worker.latitude,
       workerLon: worker.longitude,
       radiusKm: worker.workRadiusKm,
@@ -168,7 +169,7 @@ export class JobsService {
     };
   }
 
-  async getMyCreatedJobs(clerkUserId: string) {
+  async getMyCreatedJobs(clerkUserId: string, status?: JobStatus) {
     const user = await this.prisma.user.findUnique({
       where: { clerkUserId },
     });
@@ -180,6 +181,7 @@ export class JobsService {
     return this.prisma.job.findMany({
       where: {
         clientId: user.id,
+        status,
       },
       include: {
         client: true,
@@ -192,7 +194,7 @@ export class JobsService {
     });
   }
 
-  async getMyAssignedJobs(clerkUserId: string) {
+  async getMyAssignedJobs(clerkUserId: string, status?: JobStatus) {
     const user = await this.prisma.user.findUnique({
       where: { clerkUserId },
     });
@@ -204,6 +206,7 @@ export class JobsService {
     return this.prisma.job.findMany({
       where: {
         assignedWorkerId: user.id,
+        status,
       },
       include: {
         client: true,
@@ -259,6 +262,28 @@ export class JobsService {
     }
 
     const job = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`
+        SELECT "id"
+        FROM "User"
+        WHERE "id" = ${user.id}
+        FOR UPDATE
+      `;
+
+      const activeJobsCount = await tx.job.count({
+        where: {
+          assignedWorkerId: user.id,
+          status: {
+            in: [JobStatus.ASSIGNED, JobStatus.IN_PROGRESS],
+          },
+        },
+      });
+
+      if (activeJobsCount >= 3) {
+        throw new ConflictException(
+          'Worker cannot have more than 3 unfinished jobs',
+        );
+      }
+
       const result = await tx.job.updateMany({
         where: {
           id: jobId,

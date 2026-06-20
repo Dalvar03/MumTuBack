@@ -35,6 +35,7 @@ import { PaginatedJobsResponseDto } from './dto/paginated-jobs-response';
 import { RateJobDto } from './dto/rate-job.dto';
 import { CreateJobDisputeDto } from './dto/create-job-dispute.dto';
 import { DisputesService } from '../disputes/disputes.service';
+import { JobsStatusQueryDto } from './dto/jobs-status-query.dto';
 
 type AuthenticatedRequest = Request & {
   user: {
@@ -139,8 +140,14 @@ export class JobsController {
   @ApiUnauthorizedResponse({ description: 'Unauthorized' })
   @ApiNotFoundResponse({ description: 'User not found' })
   @Get('my-created')
-  getMyCreatedJobs(@Req() req: AuthenticatedRequest) {
-    return this.jobsService.getMyCreatedJobs(req.user.clerkUserId);
+  getMyCreatedJobs(
+    @Req() req: AuthenticatedRequest,
+    @Query() query: JobsStatusQueryDto,
+  ) {
+    return this.jobsService.getMyCreatedJobs(
+      req.user.clerkUserId,
+      query.status,
+    );
   }
 
   @ApiOperation({ summary: 'Get jobs assigned to the current worker' })
@@ -152,8 +159,14 @@ export class JobsController {
   @ApiUnauthorizedResponse({ description: 'Unauthorized' })
   @ApiNotFoundResponse({ description: 'User not found' })
   @Get('my-assigned')
-  getMyAssignedJobs(@Req() req: AuthenticatedRequest) {
-    return this.jobsService.getMyAssignedJobs(req.user.clerkUserId);
+  getMyAssignedJobs(
+    @Req() req: AuthenticatedRequest,
+    @Query() query: JobsStatusQueryDto,
+  ) {
+    return this.jobsService.getMyAssignedJobs(
+      req.user.clerkUserId,
+      query.status,
+    );
   }
 
   @ApiOperation({ summary: 'Get job details by ID' })

@@ -1,9 +1,18 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsNumber, Min } from 'class-validator';
+import { IsIn, IsOptional, IsNumber, Min } from 'class-validator';
 import { PaginationQueryDto } from '../../../common/dtos/pagination-query.dto';
 import { Transform } from 'class-transformer';
+import { JobStatus } from '@prisma/client';
 
 export class OpenJobsQueryDto extends PaginationQueryDto {
+  @ApiPropertyOptional({
+    enum: [JobStatus.OPEN],
+    default: JobStatus.OPEN,
+  })
+  @IsOptional()
+  @IsIn([JobStatus.OPEN])
+  status?: JobStatus;
+
   @ApiPropertyOptional({ example: 100 })
   @IsOptional()
   @Transform(({ value }) => Number(value))

@@ -1,6 +1,7 @@
-import { Prisma } from '@prisma/client';
+import { JobStatus, Prisma } from '@prisma/client';
 
 export function buildJobsWhere(params: {
+  status: JobStatus;
   workerLat: number;
   workerLon: number;
   radiusKm: number;
@@ -9,7 +10,7 @@ export function buildJobsWhere(params: {
   category?: string;
 }) {
   const conditions: Prisma.Sql[] = [
-    Prisma.sql`j.status = 'OPEN'`,
+    Prisma.sql`j.status = ${params.status}::"JobStatus"`,
     Prisma.sql`j.latitude IS NOT NULL`,
     Prisma.sql`j.longitude IS NOT NULL`,
   ];
