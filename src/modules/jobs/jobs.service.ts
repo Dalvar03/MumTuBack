@@ -14,6 +14,7 @@ import { buildJobsWhere } from './utils/queryBuilder';
 import { RateJobDto } from './dto/rate-job.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PaymentsService } from '../payments/payments.service';
+import { JobCompletionService } from '../job-completion/job-completion.service';
 
 @Injectable()
 export class JobsService {
@@ -22,6 +23,7 @@ export class JobsService {
     private readonly s3Service: S3Service,
     private readonly notificationsService: NotificationsService,
     private readonly paymentsService: PaymentsService,
+    private readonly jobCompletionService: JobCompletionService,
   ) {}
 
   async createJob(
@@ -373,117 +375,11 @@ export class JobsService {
   }
 
   async markAsCompletedByClient(jobId: string, clerkUserId: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { clerkUserId },
-    });
+    return this.jobCompletionService.approveByClient(jobId, clerkUserId);
+  }
 
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    const job = await this.prisma.job.findUnique({
-      where: { id: jobId },
-      include: {
-        client: true,
-        assignedWorker: true,
-        payment: true,
-        workerTransfer: true,
-      },
-    });
-
-    if (!job) {
-      throw new NotFoundException('Job not found');
-    }
-
-    if (job.clientId !== user.id) {
-      throw new ForbiddenException('You can complete only your own jobs');
-    }
-
-    if (!job.assignedWorkerId) {
-      throw new BadRequestException('Job has no assigned worker');
-    }
-
-    if (
-      job.payment?.status !== 'SUCCEEDED' ||
-      !job.paidAt ||
-      job.status === JobStatus.PAYMENT_PENDING
-    ) {
-      throw new ConflictException('Only paid jobs can be completed');
-    }
-
-    if (
-      !job.assignedWorker?.stripeAccountId ||
-      !job.assignedWorker.stripeTransfersEnabled ||
-      !job.assignedWorker.stripePayoutsEnabled ||
-      job.assignedWorker.stripeOnboardingStatus !== 'COMPLETE'
-    ) {
-      throw new ConflictException(
-        'Assigned worker Stripe account is not ready for transfers',
-      );
-    }
-
-    if (
-      job.status !== JobStatus.ASSIGNED &&
-      job.status !== JobStatus.IN_PROGRESS &&
-      job.status !== JobStatus.COMPLETED
-    ) {
-      throw new ConflictException(
-        'Only assigned or in-progress jobs can be completed',
-      );
-    }
-
-    const assignedWorkerId = job.assignedWorkerId;
-    const stripeAccountId = job.assignedWorker.stripeAccountId;
-
-    const workerTransfer = await this.prisma.$transaction(async (tx) => {
-      if (job.status !== JobStatus.COMPLETED) {
-        const result = await tx.job.updateMany({
-          where: {
-            id: job.id,
-            status: {
-              in: [JobStatus.ASSIGNED, JobStatus.IN_PROGRESS],
-            },
-          },
-          data: {
-            status: JobStatus.COMPLETED,
-            completedAt: new Date(),
-          },
-        });
-
-        if (result.count === 0) {
-          const currentJob = await tx.job.findUnique({
-            where: { id: job.id },
-            select: { status: true },
-          });
-
-          if (currentJob?.status !== JobStatus.COMPLETED) {
-            throw new ConflictException('Job completion state changed');
-          }
-        }
-      }
-
-      return tx.workerTransfer.upsert({
-        where: { jobId: job.id },
-        update: {},
-        create: {
-          jobId: job.id,
-          workerId: assignedWorkerId,
-          stripeAccountId,
-          amountMinor: job.workerAmountMinor,
-          currency: job.currency,
-          status: 'PENDING',
-        },
-      });
-    });
-
-    await this.paymentsService.executeWorkerTransfer(workerTransfer.id);
-
-    return this.prisma.job.findUnique({
-      where: { id: job.id },
-      include: {
-        workerTransfer: true,
-      },
-    });
+  submitCompletionByWorker(jobId: string, clerkUserId: string) {
+    return this.jobCompletionService.submitByWorker(jobId, clerkUserId);
   }
 
   async rateJob(dto: RateJobDto, fromUserId: string) {

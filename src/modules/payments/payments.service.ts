@@ -300,6 +300,84 @@ export class PaymentsService {
     }
   }
 
+  async createAndExecuteWorkerTransfer(jobId: string) {
+    const job = await this.prisma.job.findUnique({
+      where: { id: jobId },
+      include: {
+        assignedWorker: true,
+        payment: true,
+        workerTransfer: true,
+      },
+    });
+
+    if (!job) {
+      throw new NotFoundException('Job not found');
+    }
+
+    if (
+      job.status !== JobStatus.COMPLETED ||
+      job.payment?.status !== JobPaymentStatus.SUCCEEDED ||
+      !job.assignedWorkerId ||
+      !job.assignedWorker?.stripeAccountId
+    ) {
+      throw new ConflictException('Job is not ready for worker payout');
+    }
+
+    const workerTransfer = await this.prisma.workerTransfer.upsert({
+      where: { jobId: job.id },
+      update: {},
+      create: {
+        jobId: job.id,
+        workerId: job.assignedWorkerId,
+        stripeAccountId: job.assignedWorker.stripeAccountId,
+        amountMinor: job.workerAmountMinor,
+        currency: job.currency,
+        status: WorkerTransferStatus.PENDING,
+      },
+    });
+
+    return this.executeWorkerTransfer(workerTransfer.id);
+  }
+
+  async refundDisputedJob(jobId: string) {
+    const job = await this.prisma.job.findUnique({
+      where: { id: jobId },
+      include: {
+        payment: true,
+        workerTransfer: true,
+      },
+    });
+
+    if (!job?.payment) {
+      throw new NotFoundException('Job payment not found');
+    }
+
+    if (job.workerTransfer?.status === WorkerTransferStatus.SUCCEEDED) {
+      throw new ConflictException(
+        'Cannot refund a job after worker funds were transferred',
+      );
+    }
+
+    if (
+      job.payment.status === JobPaymentStatus.REFUNDED ||
+      job.payment.status === JobPaymentStatus.REFUND_PENDING
+    ) {
+      return this.getRefundState(job.id);
+    }
+
+    if (
+      job.payment.status !== JobPaymentStatus.SUCCEEDED ||
+      (!job.payment.stripePaymentIntentId && !job.payment.stripeChargeId)
+    ) {
+      throw new ConflictException('Job does not have a refundable payment');
+    }
+
+    return this.createFullRefund({
+      id: job.id,
+      payment: job.payment,
+    });
+  }
+
   async refundOpenJob(jobId: string, clientId: string) {
     const job = await this.prisma.job.findUnique({
       where: { id: jobId },
@@ -345,6 +423,21 @@ export class PaymentsService {
       throw new ConflictException('Job does not have a refundable payment');
     }
 
+    return this.createFullRefund({
+      id: job.id,
+      payment: job.payment,
+    });
+  }
+
+  private async createFullRefund(job: {
+    id: string;
+    payment: {
+      id: string;
+      status: JobPaymentStatus;
+      stripePaymentIntentId: string | null;
+      stripeChargeId: string | null;
+    };
+  }) {
     const reserved = await this.prisma.jobPayment.updateMany({
       where: {
         id: job.payment.id,
@@ -633,6 +726,55 @@ export class PaymentsService {
       },
     });
 
+    const dispute = await tx.jobDispute.findUnique({
+      where: { jobId: payment.jobId },
+    });
+
+    if (
+      dispute?.status === 'RESOLVING' &&
+      dispute.resolution === 'CLIENT_REFUND'
+    ) {
+      if (isFailed) {
+        await tx.job.update({
+          where: { id: payment.jobId },
+          data: {
+            status: JobStatus.DISPUTED,
+            cancelledAt: null,
+          },
+        });
+        await tx.jobDispute.update({
+          where: { id: dispute.id },
+          data: {
+            status: 'OPEN',
+            resolution: null,
+            resolvedByAdminEmail: null,
+            resolutionError: refund.failure_reason ?? `Refund ${refund.status}`,
+          },
+        });
+        return;
+      }
+
+      await tx.job.update({
+        where: { id: payment.jobId },
+        data: {
+          status: JobStatus.CANCELLED,
+          cancelledAt: new Date(),
+        },
+      });
+
+      if (isSucceeded) {
+        await tx.jobDispute.update({
+          where: { id: dispute.id },
+          data: {
+            status: 'RESOLVED',
+            resolvedAt: new Date(),
+            resolutionError: null,
+          },
+        });
+      }
+      return;
+    }
+
     if (isFailed) {
       await tx.job.updateMany({
         where: {
@@ -690,16 +832,44 @@ export class PaymentsService {
     });
 
     if (isFullRefund) {
+      const dispute = await tx.jobDispute.findUnique({
+        where: { jobId: payment.jobId },
+      });
+
       await tx.job.updateMany({
         where: {
           id: payment.jobId,
-          assignedWorkerId: null,
+          OR: [
+            {
+              assignedWorkerId: null,
+            },
+            {
+              dispute: {
+                status: 'RESOLVING',
+                resolution: 'CLIENT_REFUND',
+              },
+            },
+          ],
         },
         data: {
           status: JobStatus.CANCELLED,
           cancelledAt: new Date(),
         },
       });
+
+      if (
+        dispute?.status === 'RESOLVING' &&
+        dispute.resolution === 'CLIENT_REFUND'
+      ) {
+        await tx.jobDispute.update({
+          where: { id: dispute.id },
+          data: {
+            status: 'RESOLVED',
+            resolvedAt: new Date(),
+            resolutionError: null,
+          },
+        });
+      }
     }
   }
 

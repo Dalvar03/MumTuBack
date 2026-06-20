@@ -12,18 +12,37 @@ import { ConversationsModule } from './modules/conversations/conversations.modul
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import AdminJS from 'adminjs';
 import { PaymentsModule } from './modules/payments/payments.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { JobCompletionModule } from './modules/job-completion/job-completion.module';
+import { DisputesModule } from './modules/disputes/disputes.module';
+import { DisputesService } from './modules/disputes/disputes.service';
+import { createJobDisputeResource } from './admin/job-dispute.resource';
 
 AdminJS.registerAdapter({ Database, Resource });
 
-// TODO: Move to env
+const requireAdminSecret = (name: string) => {
+  const value = process.env[name];
+
+  if (!value) {
+    throw new Error(`${name} is not set`);
+  }
+
+  return value;
+};
+
 const DEFAULT_ADMIN = {
-  email: 'admin@example.com',
-  password: 'password',
+  email: process.env.ADMIN_EMAIL,
+  password: process.env.ADMIN_PASSWORD,
 };
 
 const authenticate = async (email: string, password: string) => {
-  if (email === DEFAULT_ADMIN.email && password === DEFAULT_ADMIN.password) {
-    return Promise.resolve(DEFAULT_ADMIN);
+  if (
+    DEFAULT_ADMIN.email &&
+    DEFAULT_ADMIN.password &&
+    email === DEFAULT_ADMIN.email &&
+    password === DEFAULT_ADMIN.password
+  ) {
+    return Promise.resolve({ email: DEFAULT_ADMIN.email });
   }
   return null;
 };
@@ -35,11 +54,17 @@ const authenticate = async (email: string, password: string) => {
     UsersModule,
     JobsModule,
     S3Module,
+    ScheduleModule.forRoot(),
+    JobCompletionModule,
+    DisputesModule,
     import('@adminjs/nestjs').then(({ AdminModule }) =>
       AdminModule.createAdminAsync({
-        useFactory: () => {
-          const prisma = new PrismaService();
-
+        imports: [PrismaModule, DisputesModule],
+        inject: [PrismaService, DisputesService],
+        useFactory: (
+          prisma: PrismaService,
+          disputesService: DisputesService,
+        ) => {
           return {
             adminJsOptions: {
               rootPath: '/admin',
@@ -57,17 +82,20 @@ const authenticate = async (email: string, password: string) => {
                   },
                   options: {},
                 },
+                createJobDisputeResource(prisma, disputesService),
               ],
             },
             auth: {
               authenticate,
               cookieName: 'adminjs',
-              cookiePassword: 'secret',
+              cookiePassword: requireAdminSecret('ADMIN_COOKIE_SECRET'),
             },
             sessionOptions: {
               resave: true,
               saveUninitialized: true,
-              secret: 'secret',
+              secret:
+                process.env.ADMIN_SESSION_SECRET ??
+                requireAdminSecret('ADMIN_COOKIE_SECRET'),
             },
           };
         },

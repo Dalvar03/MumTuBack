@@ -47,6 +47,7 @@ model User {
 
   payoutDetails   WorkerPayoutDetails?
   workerTransfers WorkerTransfer[]
+  openedDisputes  JobDispute[]         @relation("ClientOpenedDisputes")
 
   averageRating Float?
   ratingsCount  Int    @default(0)
@@ -64,8 +65,35 @@ enum JobStatus {
   OPEN
   ASSIGNED
   IN_PROGRESS
+  AWAITING_APPROVAL
+  DISPUTED
   COMPLETED
   CANCELLED
+}
+
+enum JobApprovalSource {
+  CLIENT
+  AUTO
+  ADMIN
+}
+
+enum DisputeStatus {
+  OPEN
+  RESOLVING
+  RESOLVED
+}
+
+enum DisputeResolution {
+  CLIENT_REFUND
+  WORKER_PAYOUT
+}
+
+enum DisputeReason {
+  WORK_NOT_COMPLETED
+  POOR_QUALITY
+  DIFFERENT_FROM_DESCRIPTION
+  PROPERTY_DAMAGE
+  OTHER
 }
 
 enum StripeOnboardingStatus {
@@ -107,14 +135,18 @@ model Job {
   placeId   String?
   category  String
 
-  status            JobStatus @default(PAYMENT_PENDING)
-  amountMinor       Int
-  currency          String    @default("pln")
-  platformFeeMinor  Int
-  workerAmountMinor Int
-  paidAt            DateTime?
-  completedAt       DateTime?
-  cancelledAt       DateTime?
+  status             JobStatus          @default(PAYMENT_PENDING)
+  amountMinor        Int
+  currency           String             @default("pln")
+  platformFeeMinor   Int
+  workerAmountMinor  Int
+  paidAt             DateTime?
+  workerCompletedAt  DateTime?
+  approvalDeadlineAt DateTime?
+  approvedAt         DateTime?
+  approvalSource     JobApprovalSource?
+  completedAt        DateTime?
+  cancelledAt        DateTime?
 
   clientId String
   client   User   @relation("ClientJobs", fields: [clientId], references: [id])
@@ -131,6 +163,28 @@ model Job {
   conversation   Conversation?
   payment        JobPayment?
   workerTransfer WorkerTransfer?
+  dispute        JobDispute?
+
+  @@index([status, approvalDeadlineAt])
+}
+
+model JobDispute {
+  id                   String             @id @default(cuid())
+  jobId                String             @unique
+  job                  Job                @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  openedByClientId     String
+  openedByClient       User               @relation("ClientOpenedDisputes", fields: [openedByClientId], references: [id], onDelete: Restrict)
+  reason               DisputeReason
+  description          String             @db.Text
+  status               DisputeStatus      @default(OPEN)
+  resolution           DisputeResolution?
+  resolutionError      String?
+  resolvedByAdminEmail String?
+  resolvedAt           DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@index([status, createdAt])
 }
 
 model JobPayment {
@@ -255,6 +309,12 @@ model Message {
 enum NotificationType {
   JOB_ASSIGNED
   NEW_MESSAGE
+  WORKER_COMPLETED_JOB
+  JOB_APPROVED
+  JOB_AUTO_APPROVED
+  JOB_DISPUTED
+  DISPUTE_RESOLVED
+  WORKER_PAYOUT_FAILED
 }
 
 model Notification {

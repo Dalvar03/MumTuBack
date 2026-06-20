@@ -33,6 +33,8 @@ import { JobResponseDto } from './dto/job-response.dto';
 import { OpenJobsQueryDto } from './dto/open-jobs-query.dto';
 import { PaginatedJobsResponseDto } from './dto/paginated-jobs-response';
 import { RateJobDto } from './dto/rate-job.dto';
+import { CreateJobDisputeDto } from './dto/create-job-dispute.dto';
+import { DisputesService } from '../disputes/disputes.service';
 
 type AuthenticatedRequest = Request & {
   user: {
@@ -45,7 +47,10 @@ type AuthenticatedRequest = Request & {
 @Controller('jobs')
 @UseGuards(ClerkAuthGuard)
 export class JobsController {
-  constructor(private readonly jobsService: JobsService) {}
+  constructor(
+    private readonly jobsService: JobsService,
+    private readonly disputesService: DisputesService,
+  ) {}
 
   @ApiOperation({ summary: 'Create a new job with optional photos' })
   @ApiConsumes('multipart/form-data')
@@ -181,6 +186,20 @@ export class JobsController {
   @Patch(':id/done')
   markAsCompleted(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.jobsService.markAsCompletedByClient(id, req.user.clerkUserId);
+  }
+
+  @Patch(':id/submit-completion')
+  submitCompletion(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.jobsService.submitCompletionByWorker(id, req.user.clerkUserId);
+  }
+
+  @Post(':id/disputes')
+  openDispute(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: CreateJobDisputeDto,
+  ) {
+    return this.disputesService.openByClient(id, req.user.clerkUserId, dto);
   }
 
   @Post('rate')
