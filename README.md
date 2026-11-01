@@ -25,6 +25,37 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## Commission invoices (Fakturownia)
+
+Commission invoices are created after a worker transfer succeeds. The integration
+is enabled when both required variables are set:
+
+```env
+FAKTUROWNIA_BASE_URL=https://your-account.fakturownia.pl
+FAKTUROWNIA_API_TOKEN=your-api-token
+```
+
+Optional configuration:
+
+```env
+FAKTUROWNIA_DEPARTMENT_ID=
+FAKTUROWNIA_TAX_RATE=23
+FAKTUROWNIA_INVOICE_KIND=vat
+FAKTUROWNIA_INVOICE_LANGUAGE=pl
+FAKTUROWNIA_TIME_ZONE=Europe/Warsaw
+FAKTUROWNIA_COMMISSION_ITEM_NAME=Prowizja platformy
+FAKTUROWNIA_SEND_TO_KSEF=false
+FAKTUROWNIA_TIMEOUT_MS=10000
+FAKTUROWNIA_MAX_ATTEMPTS=5
+FAKTUROWNIA_RETRY_CRON=*/5 * * * *
+```
+
+`FAKTUROWNIA_SEND_TO_KSEF` is disabled by default. Enable it after the
+Fakturownia account is connected to KSeF and the seller/buyer data have been
+validated. Workers can update invoice recipient data with
+`PATCH /users/me/billing-profile` and list their invoices with
+`GET /commission-invoices`.
+
 ## Project setup
 
 ```bash

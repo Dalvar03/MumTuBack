@@ -31,6 +31,12 @@ model User {
   address                String?
   onboardingDone         Boolean                @default(false)
   phoneNumber            String?
+  billingName            String?
+  billingTaxId           String?
+  billingStreet          String?
+  billingCity            String?
+  billingPostalCode      String?
+  billingCountry         String?
   stripeCustomerId       String?                @unique
   stripeAccountId        String?                @unique
   stripeOnboardingStatus StripeOnboardingStatus @default(NOT_STARTED)
@@ -45,9 +51,10 @@ model User {
   createdJobs  Job[] @relation("ClientJobs")
   assignedJobs Job[] @relation("AssignedWorkerJobs")
 
-  payoutDetails   WorkerPayoutDetails?
-  workerTransfers WorkerTransfer[]
-  openedDisputes  JobDispute[]         @relation("ClientOpenedDisputes")
+  payoutDetails      WorkerPayoutDetails?
+  workerTransfers    WorkerTransfer[]
+  commissionInvoices CommissionInvoice[]
+  openedDisputes     JobDispute[]         @relation("ClientOpenedDisputes")
 
   averageRating Float?
   ratingsCount  Int    @default(0)
@@ -122,6 +129,13 @@ enum WorkerTransferStatus {
   REVERSED
 }
 
+enum CommissionInvoiceStatus {
+  PENDING
+  PROCESSING
+  ISSUED
+  FAILED
+}
+
 model Job {
   id          String  @id @default(cuid())
   title       String
@@ -160,10 +174,11 @@ model Job {
 
   ratings Rating[]
 
-  conversation   Conversation?
-  payment        JobPayment?
-  workerTransfer WorkerTransfer?
-  dispute        JobDispute?
+  conversation      Conversation?
+  payment           JobPayment?
+  workerTransfer    WorkerTransfer?
+  commissionInvoice CommissionInvoice?
+  dispute           JobDispute?
 
   @@index([status, approvalDeadlineAt])
 }
@@ -229,6 +244,31 @@ model WorkerTransfer {
 
   @@index([workerId])
   @@index([status])
+}
+
+model CommissionInvoice {
+  id             String                  @id @default(cuid())
+  jobId          String                  @unique
+  job            Job                     @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  workerId       String
+  worker         User                    @relation(fields: [workerId], references: [id], onDelete: Restrict)
+  amountMinor    Int
+  currency       String
+  status         CommissionInvoiceStatus @default(PENDING)
+  provider       String                  @default("FAKTUROWNIA")
+  providerId     String?                 @unique
+  providerStatus String?
+  number         String?
+  ksefNumber     String?
+  pdfUrl         String?
+  attemptCount   Int                     @default(0)
+  lastError      String?
+  issuedAt       DateTime?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  @@index([workerId, createdAt])
+  @@index([status, updatedAt])
 }
 
 model StripeWebhookEvent {

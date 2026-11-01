@@ -7,6 +7,7 @@ import {
 import { UserRole } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { UpdateOnboardingDto, UserRoleDto } from './dto/update-onboarding.dto';
+import { UpdateBillingProfileDto } from './dto/update-billing-profile.dto';
 
 @Injectable()
 export class UsersService {
@@ -84,6 +85,32 @@ export class UsersService {
         longitude: dto.longitude,
         latitude: dto.latitude,
         phoneNumber: dto.phoneNumber,
+      },
+    });
+  }
+
+  async updateBillingProfile(
+    clerkUserId: string,
+    dto: UpdateBillingProfileDto,
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { clerkUserId },
+      select: { id: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        billingName: dto.billingName,
+        billingTaxId: dto.billingTaxId || null,
+        billingStreet: dto.billingStreet,
+        billingCity: dto.billingCity,
+        billingPostalCode: dto.billingPostalCode,
+        billingCountry: dto.billingCountry,
       },
     });
   }

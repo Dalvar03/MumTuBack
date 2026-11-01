@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -11,10 +12,12 @@ import {
   Prisma,
   StripeOnboardingStatus,
   User,
+  WorkerTransfer,
   WorkerTransferStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { StripeEvent, StripeService } from './stripe.service';
+import { CommissionInvoicesService } from '../commission-invoices/commission-invoices.service';
 
 type StripeEventObject<T extends StripeEvent['type']> = Extract<
   StripeEvent,
@@ -28,9 +31,12 @@ type StripeCharge = StripeEventObject<'charge.refunded'>;
 
 @Injectable()
 export class PaymentsService {
+  private readonly logger = new Logger(PaymentsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly stripeService: StripeService,
+    private readonly commissionInvoicesService: CommissionInvoicesService,
   ) {}
 
   getPaymentAmounts(price: Prisma.Decimal): {
@@ -230,7 +236,9 @@ export class PaymentsService {
     return this.processWebhookEvent(event);
   }
 
-  async executeWorkerTransfer(workerTransferId: string) {
+  async executeWorkerTransfer(
+    workerTransferId: string,
+  ): Promise<WorkerTransfer> {
     const transfer = await this.prisma.workerTransfer.findUnique({
       where: { id: workerTransferId },
       include: {
@@ -250,6 +258,7 @@ export class PaymentsService {
       transfer.status === WorkerTransferStatus.SUCCEEDED &&
       transfer.stripeTransferId
     ) {
+      await this.tryIssueCommissionInvoice(transfer.jobId);
       return transfer;
     }
 
@@ -261,6 +270,8 @@ export class PaymentsService {
         lastError: null,
       },
     });
+
+    let completedTransfer: WorkerTransfer;
 
     try {
       const stripeTransfer = await this.stripeService.client.transfers.create(
@@ -281,7 +292,7 @@ export class PaymentsService {
         },
       );
 
-      return this.prisma.workerTransfer.update({
+      completedTransfer = await this.prisma.workerTransfer.update({
         where: { id: transfer.id },
         data: {
           stripeTransferId: stripeTransfer.id,
@@ -298,9 +309,13 @@ export class PaymentsService {
         },
       });
     }
+
+    await this.tryIssueCommissionInvoice(transfer.jobId);
+
+    return completedTransfer;
   }
 
-  async createAndExecuteWorkerTransfer(jobId: string) {
+  async createAndExecuteWorkerTransfer(jobId: string): Promise<WorkerTransfer> {
     const job = await this.prisma.job.findUnique({
       where: { id: jobId },
       include: {
@@ -1032,5 +1047,15 @@ export class PaymentsService {
 
   private getErrorMessage(error: unknown): string {
     return error instanceof Error ? error.message : 'Unknown Stripe error';
+  }
+
+  private async tryIssueCommissionInvoice(jobId: string) {
+    try {
+      await this.commissionInvoicesService.issueForJob(jobId);
+    } catch (error) {
+      this.logger.error(
+        `Commission invoice orchestration failed for job ${jobId}: ${this.getErrorMessage(error)}`,
+      );
+    }
   }
 }

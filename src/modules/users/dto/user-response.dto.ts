@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UserResponseDto {
   @ApiProperty({
@@ -77,4 +77,22 @@ export class UserResponseDto {
     description: 'phone number',
   })
   phoneNumber?: string;
+
+  @ApiPropertyOptional({ example: 'Jan Kowalski', nullable: true })
+  billingName?: string | null;
+
+  @ApiPropertyOptional({ example: '5252445767', nullable: true })
+  billingTaxId?: string | null;
+
+  @ApiPropertyOptional({ example: 'ul. Przykładowa 10', nullable: true })
+  billingStreet?: string | null;
+
+  @ApiPropertyOptional({ example: 'Warszawa', nullable: true })
+  billingCity?: string | null;
+
+  @ApiPropertyOptional({ example: '00-001', nullable: true })
+  billingPostalCode?: string | null;
+
+  @ApiPropertyOptional({ example: 'PL', nullable: true })
+  billingCountry?: string | null;
 }

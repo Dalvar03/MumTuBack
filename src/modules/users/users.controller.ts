@@ -5,6 +5,7 @@ import { UpdateOnboardingDto } from './dto/update-onboarding.dto';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 import { UserResponseDto } from './dto/user-response.dto';
 import { ApiResponse } from '@nestjs/swagger';
+import { UpdateBillingProfileDto } from './dto/update-billing-profile.dto';
 
 type AuthenticatedRequest = Request & {
   user: {
@@ -32,5 +33,13 @@ export class UsersController {
     @Body() dto: UpdateOnboardingDto,
   ) {
     return this.usersService.updateOnboarding(req.user.clerkUserId, dto);
+  }
+
+  @Patch('me/billing-profile')
+  updateBillingProfile(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: UpdateBillingProfileDto,
+  ) {
+    return this.usersService.updateBillingProfile(req.user.clerkUserId, dto);
   }
 }

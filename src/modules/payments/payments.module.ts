@@ -4,9 +4,10 @@ import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 import { StripeWebhookController } from './stripe-webhook.controller';
 import { StripeService } from './stripe.service';
+import { CommissionInvoicesModule } from '../commission-invoices/commission-invoices.module';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, CommissionInvoicesModule],
   controllers: [PaymentsController, StripeWebhookController],
   providers: [StripeService, PaymentsService],
   exports: [PaymentsService],
